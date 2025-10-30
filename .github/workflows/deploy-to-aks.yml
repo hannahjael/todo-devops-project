@@ -1,0 +1,84 @@
+name: Deploy to AKS
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Azure Container Registry
+      run: az acr login --name ${{ secrets.ACR_NAME }}
+
+    - name: Build and push Backend Docker image
+      run: |
+        docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/todo-backend:${{ github.sha }} -t ${{ secrets.ACR_NAME }}.azurecr.io/todo-backend:latest ./backend
+        docker push ${{ secrets.ACR_NAME }}.azurecr.io/todo-backend:${{ github.sha }}
+        docker push ${{ secrets.ACR_NAME }}.azurecr.io/todo-backend:latest
+
+    - name: Build and push Frontend Docker image
+      run: |
+        docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/todo-frontend:${{ github.sha }} -t ${{ secrets.ACR_NAME }}.azurecr.io/todo-frontend:latest ./frontend
+        docker push ${{ secrets.ACR_NAME }}.azurecr.io/todo-frontend:${{ github.sha }}
+        docker push ${{ secrets.ACR_NAME }}.azurecr.io/todo-frontend:latest
+
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+
+    - name: Get AKS credentials
+      run: |
+        az aks get-credentials \
+          --resource-group ${{ secrets.RESOURCE_GROUP }} \
+          --name ${{ secrets.AKS_CLUSTER_NAME }} \
+          --overwrite-existing
+
+    - name: Deploy to AKS
+      run: |
+        kubectl apply -f k8s/deployment.yml
+        kubectl rollout restart deployment/todo-backend
+        kubectl rollout restart deployment/todo-frontend
+
+    - name: Wait for deployment
+      run: |
+        kubectl rollout status deployment/todo-backend --timeout=5m
+        kubectl rollout status deployment/todo-frontend --timeout=5m
+
+    - name: Get deployment status
+      run: |
+        echo "===================================="
+        echo "Pods:"
+        kubectl get pods
+        echo ""
+        echo "Services:"
+        kubectl get services
+        echo ""
+        echo "Deployments:"
+        kubectl get deployments
+        echo "===================================="
+
+    - name: Get Frontend URL
+      run: |
+        echo "Waiting for LoadBalancer IP..."
+        kubectl wait --for=jsonpath='{.status.loadBalancer.ingress}' service/frontend --timeout=5m || true
+        EXTERNAL_IP=$(kubectl get service frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+        if [ -z "$EXTERNAL_IP" ]; then
+          echo "LoadBalancer IP not yet assigned. Check with: kubectl get service frontend"
+        else
+          echo "===================================="
+          echo "Application URL: http://$EXTERNAL_IP"
+          echo "===================================="
+        fi
