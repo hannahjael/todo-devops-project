@@ -23,24 +23,24 @@ jobs:
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+    - name: 🔑 ACR Login
+      run: az acr login --name ${{ env.ACR_NAME }}
+
     - name: 🐳 Build and push backend image
       run: |
         echo "Building backend..."
-        cd backend
-        docker build -t $ACR_NAME.azurecr.io/todo-backend:${{ github.sha }} .
-        docker build -t $ACR_NAME.azurecr.io/todo-backend:latest .
-        az acr login --name $ACR_NAME
-        docker push $ACR_NAME.azurecr.io/todo-backend:${{ github.sha }}
-        docker push $ACR_NAME.azurecr.io/todo-backend:latest
+        docker build -t ${{ env.ACR_NAME }}.azurecr.io/todo-backend:${{ github.sha }} ./backend
+        docker build -t ${{ env.ACR_NAME }}.azurecr.io/todo-backend:latest ./backend
+        docker push ${{ env.ACR_NAME }}.azurecr.io/todo-backend:${{ github.sha }}
+        docker push ${{ env.ACR_NAME }}.azurecr.io/todo-backend:latest
 
     - name: 🎨 Build and push frontend image
       run: |
         echo "Building frontend..."
-        cd frontend
-        docker build -t $ACR_NAME.azurecr.io/todo-frontend:${{ github.sha }} .
-        docker build -t $ACR_NAME.azurecr.io/todo-frontend:latest .
-        docker push $ACR_NAME.azurecr.io/todo-frontend:${{ github.sha }}
-        docker push $ACR_NAME.azurecr.io/todo-frontend:latest
+        docker build -t ${{ env.ACR_NAME }}.azurecr.io/todo-frontend:${{ github.sha }} ./frontend
+        docker build -t ${{ env.ACR_NAME }}.azurecr.io/todo-frontend:latest ./frontend
+        docker push ${{ env.ACR_NAME }}.azurecr.io/todo-frontend:${{ github.sha }}
+        docker push ${{ env.ACR_NAME }}.azurecr.io/todo-frontend:latest
 
     - name: ☸️ Set AKS context
       uses: azure/aks-set-context@v3
@@ -48,15 +48,36 @@ jobs:
         resource-group: ${{ env.RESOURCE_GROUP }}
         cluster-name: ${{ env.AKS_CLUSTER_NAME }}
 
-    - name: 🚀 Deploy to AKS
+    - name: 🚀 Deploy to Kubernetes
       run: |
+        echo "Applying Kubernetes manifests..."
         kubectl apply -f k8s/deployment.yml
+        
+        echo "Restarting deployments..."
         kubectl rollout restart deployment/todo-backend
         kubectl rollout restart deployment/todo-frontend
+        
+        echo "Waiting for rollout to complete..."
         kubectl rollout status deployment/todo-backend --timeout=5m
         kubectl rollout status deployment/todo-frontend --timeout=5m
 
-    - name: ✅ Get Application URL
+    - name: ✅ Verify deployment
+      run: |
+        echo "=========================================="
+        echo "📦 Pods Status:"
+        kubectl get pods
+        echo ""
+        echo "🌐 Services:"
+        kubectl get services
+        echo ""
+        echo "🚀 Deployments:"
+        kubectl get deployments
+        echo "=========================================="
+
+    - name: 🌐 Get Application URL
       run: |
         EXTERNAL_IP=$(kubectl get service frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+        echo "=========================================="
+        echo "✅ DEPLOYMENT SUCCESSFUL!"
         echo "🌐 Application URL: http://$EXTERNAL_IP"
+        echo "=========================================="
