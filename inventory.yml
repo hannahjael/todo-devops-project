@@ -1,0 +1,10 @@
+all:
+  hosts:
+    localhost:
+      ansible_connection: local
+      ansible_python_interpreter: /usr/bin/python3
+  vars:
+    resource_group: "todo-devops-rg"
+    aks_cluster_name: "todo-aks-cluster"
+    acr_name: "tododevopsacr1761680890"
+    acr_login_server: "tododevopsacr1761680890.azurecr.io"

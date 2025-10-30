@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevOps Todo List</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 DevOps Todo List</h1>
+            <p class="subtitle">Full CI/CD Pipeline Demo</p>
+        </header>
+        
+        <div class="add-todo">
+            <input type="text" id="todoInput" placeholder="Add a new task..." />
+            <button id="addBtn">Add</button>
+        </div>
+        
+        <div id="status" class="status"></div>
+        
+        <ul id="todoList" class="todo-list"></ul>
+        
+        <footer>
+            <div class="stats">
+                <span id="totalTodos">Total: 0</span>
+                <span id="completedTodos">Completed: 0</span>
+            </div>
+        </footer>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>

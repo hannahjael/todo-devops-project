@@ -1,0 +1,48 @@
+---
+- name: Deploy Todo App to AKS
+  hosts: localhost
+  gather_facts: no
+  vars:
+    acr_name: "{{ lookup('env', 'ACR_NAME') }}"
+    resource_group: "todo-devops-rg"
+    aks_name: "todo-aks-cluster"
+  
+  tasks:
+    - name: Get AKS credentials
+      command: >
+        az aks get-credentials
+        --resource-group {{ resource_group }}
+        --name {{ aks_name }}
+        --overwrite-existing
+      changed_when: false
+
+    - name: Replace ACR name in deployment
+      template:
+        src: ../k8s/deployment.yml
+        dest: /tmp/deployment-ansible.yml
+      vars:
+        ACR_NAME: "{{ acr_name }}"
+
+    - name: Apply Kubernetes deployment
+      command: kubectl apply -f /tmp/deployment-ansible.yml
+      register: kubectl_result
+      changed_when: "'configured' in kubectl_result.stdout or 'created' in kubectl_result.stdout"
+
+    - name: Wait for deployments to be ready
+      command: kubectl rollout status deployment/{{ item }}
+      loop:
+        - todo-backend
+        - todo-frontend
+      register: rollout_result
+      changed_when: false
+
+    - name: Get service external IP
+      command: kubectl get service frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+      register: external_ip
+      until: external_ip.stdout != ""
+      retries: 30
+      delay: 10
+
+    - name: Display application URL
+      debug:
+        msg: "Application is accessible at: http://{{ external_ip.stdout }}"

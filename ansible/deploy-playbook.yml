@@ -1,0 +1,84 @@
+---
+- name: Deploy CheckMate Todo App to AKS
+  hosts: localhost
+  gather_facts: yes
+  
+  vars:
+    project_root: "{{ playbook_dir }}/.."
+    k8s_manifests: "{{ project_root }}/k8s"
+  
+  tasks:
+    - name: Display deployment information
+      debug:
+        msg: |
+          ========================================
+          Deploying CheckMate Todo App
+          Resource Group: {{ resource_group }}
+          AKS Cluster: {{ aks_cluster_name }}
+          ACR: {{ acr_login_server }}
+          ========================================
+
+    - name: Get AKS credentials
+      command: >
+        az aks get-credentials
+        --resource-group {{ resource_group }}
+        --name {{ aks_cluster_name }}
+        --overwrite-existing
+      changed_when: false
+
+    - name: Apply Kubernetes deployment manifests
+      command: kubectl apply -f {{ k8s_manifests }}/deployment.yml
+      register: kubectl_apply
+      changed_when: "'configured' in kubectl_apply.stdout or 'created' in kubectl_apply.stdout"
+
+    - name: Display deployment result
+      debug:
+        msg: "{{ kubectl_apply.stdout_lines }}"
+
+    - name: Wait for backend deployment to be ready
+      command: kubectl rollout status deployment/todo-backend --timeout=5m
+      register: backend_rollout
+      changed_when: false
+
+    - name: Wait for frontend deployment to be ready
+      command: kubectl rollout status deployment/todo-frontend --timeout=5m
+      register: frontend_rollout
+      changed_when: false
+
+    - name: Get all pods
+      command: kubectl get pods -o wide
+      register: pods_status
+      changed_when: false
+
+    - name: Display pods status
+      debug:
+        msg: "{{ pods_status.stdout_lines }}"
+
+    - name: Get all services
+      command: kubectl get services
+      register: services_status
+      changed_when: false
+
+    - name: Display services
+      debug:
+        msg: "{{ services_status.stdout_lines }}"
+
+    - name: Get LoadBalancer IP
+      shell: kubectl get service frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+      register: external_ip
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Display application URL
+      debug:
+        msg: |
+          ========================================
+          DEPLOYMENT COMPLETE!
+          ========================================
+          Application URL: http://{{ external_ip.stdout }}
+          
+          Commands to check status:
+          - kubectl get pods
+          - kubectl get services
+          ========================================
+      when: external_ip.stdout != ""
