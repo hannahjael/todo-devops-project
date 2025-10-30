@@ -3,8 +3,6 @@ name: CheckMate - Build and Deploy to AKS
 on:
   push:
     branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
 
 env:
@@ -29,23 +27,20 @@ jobs:
       run: |
         echo "Building backend..."
         cd backend
-        az acr build \
-          --registry $ACR_NAME \
-          --image todo-backend:${{ github.sha }} \
-          --image todo-backend:latest \
-          --file Dockerfile \
-          .
+        docker build -t $ACR_NAME.azurecr.io/todo-backend:${{ github.sha }} .
+        docker build -t $ACR_NAME.azurecr.io/todo-backend:latest .
+        az acr login --name $ACR_NAME
+        docker push $ACR_NAME.azurecr.io/todo-backend:${{ github.sha }}
+        docker push $ACR_NAME.azurecr.io/todo-backend:latest
 
     - name: 🎨 Build and push frontend image
       run: |
         echo "Building frontend..."
         cd frontend
-        az acr build \
-          --registry $ACR_NAME \
-          --image todo-frontend:${{ github.sha }} \
-          --image todo-frontend:latest \
-          --file Dockerfile \
-          .
+        docker build -t $ACR_NAME.azurecr.io/todo-frontend:${{ github.sha }} .
+        docker build -t $ACR_NAME.azurecr.io/todo-frontend:latest .
+        docker push $ACR_NAME.azurecr.io/todo-frontend:${{ github.sha }}
+        docker push $ACR_NAME.azurecr.io/todo-frontend:latest
 
     - name: ☸️ Set AKS context
       uses: azure/aks-set-context@v3
@@ -55,34 +50,13 @@ jobs:
 
     - name: 🚀 Deploy to AKS
       run: |
-        echo "Deploying to Kubernetes..."
         kubectl apply -f k8s/deployment.yml
-        
-        echo "Restarting deployments to pull latest images..."
         kubectl rollout restart deployment/todo-backend
         kubectl rollout restart deployment/todo-frontend
-        
-        echo "Waiting for rollout to complete..."
         kubectl rollout status deployment/todo-backend --timeout=5m
         kubectl rollout status deployment/todo-frontend --timeout=5m
 
-    - name: ✅ Verify deployment
-      run: |
-        echo "=========================================="
-        echo "📦 Pods Status:"
-        kubectl get pods
-        echo ""
-        echo "🌐 Services:"
-        kubectl get services
-        echo ""
-        echo "🚀 Deployments:"
-        kubectl get deployments
-        echo "=========================================="
-
-    - name: 🌐 Get Application URL
+    - name: ✅ Get Application URL
       run: |
         EXTERNAL_IP=$(kubectl get service frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-        echo "=========================================="
-        echo "✅ DEPLOYMENT SUCCESSFUL!"
         echo "🌐 Application URL: http://$EXTERNAL_IP"
-        echo "=========================================="
